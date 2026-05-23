@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Prompt Engineering Playground</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #0f172a; color: #e2e8f0; min-height: 100vh;
+  }
+
+  header {
+    background: linear-gradient(135deg, #1e293b, #0f172a);
+    border-bottom: 1px solid #334155;
+    padding: 20px 32px;
+  }
+  header h1 { font-size: 24px; color: #818cf8; }
+  header p { font-size: 14px; color: #94a3b8; margin-top: 4px; }
+
+  .container { display: flex; gap: 0; height: calc(100vh - 120px); }
+
+  /* ---- LEFT PANEL: Prompt Input ---- */
+  .panel-left {
+    width: 340px; min-width: 300px;
+    background: #1e293b; border-right: 1px solid #334155;
+    display: flex; flex-direction: column; padding: 20px;
+  }
+  .panel-left label { font-size: 13px; font-weight: 600; color: #a5b4fc; margin-bottom: 8px; }
+  .panel-left textarea {
+    flex: 1;
+    background: #0f172a; color: #e2e8f0; border: 1px solid #334155;
+    border-radius: 8px; padding: 14px; font-size: 14px; font-family: ui-monospace, monospace;
+    resize: none; outline: none; transition: border-color 0.2s;
+  }
+  .panel-left textarea:focus { border-color: #818cf8; }
+
+  /* ---- CENTER PANEL: Techniques ---- */
+  .panel-center {
+    width: 340px; min-width: 300px;
+    background: #1e293b; border-right: 1px solid #334155;
+    display: flex; flex-direction: column; padding: 20px; overflow-y: auto;
+  }
+  .section-title {
+    font-size: 13px; font-weight: 600; color: #a5b4fc; margin-bottom: 14px;
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .technique-card {
+    background: #0f172a; border: 1px solid #334155; border-radius: 8px;
+    padding: 14px; margin-bottom: 12px; transition: border-color 0.2s;
+  }
+  .technique-card.active { border-color: #818cf8; background: #1a1f36; }
+  .technique-card .header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 6px;
+  }
+  .technique-card .name { font-size: 14px; font-weight: 600; }
+  .technique-card .desc { font-size: 12px; color: #94a3b8; line-height: 1.4; }
+
+  /* Toggle switch */
+  .toggle {
+    position: relative; width: 40px; height: 22px; flex-shrink: 0;
+  }
+  .toggle input { opacity: 0; width: 0; height: 0; }
+  .toggle .slider {
+    position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+    background: #334155; border-radius: 22px; transition: 0.2s;
+  }
+  .toggle .slider::before {
+    content: ""; position: absolute; height: 16px; width: 16px;
+    left: 3px; bottom: 3px; background: #e2e8f0; border-radius: 50%; transition: 0.2s;
+  }
+  .toggle input:checked + .slider { background: #818cf8; }
+  .toggle input:checked + .slider::before { transform: translateX(18px); }
+
+  .role-select, .struct-select {
+    width: 100%; margin-top: 8px; padding: 6px 10px;
+    background: #0f172a; color: #e2e8f0; border: 1px solid #334155;
+    border-radius: 6px; font-size: 12px; outline: none;
+  }
+  .examples-input {
+    width: 100%; margin-top: 8px; padding: 8px 10px;
+    background: #0f172a; color: #e2e8f0; border: 1px solid #334155;
+    border-radius: 6px; font-size: 12px; font-family: ui-monospace, monospace;
+    resize: vertical; min-height: 60px; outline: none;
+  }
+
+  .temp-row { margin-top: 16px; }
+  .temp-row label { font-size: 13px; color: #94a3b8; }
+  .temp-row input[type="range"] { width: 100%; margin-top: 6px; accent-color: #818cf8; }
+  .temp-val { font-size: 12px; color: #818cf8; text-align: right; }
+
+  .btn-generate {
+    margin-top: 16px; padding: 12px; background: #818cf8; color: #fff;
+    border: none; border-radius: 8px; font-size: 14px; font-weight: 600;
+    cursor: pointer; transition: background 0.2s;
+  }
+  .btn-generate:hover { background: #6366f1; }
+  .btn-generate:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* ---- RIGHT PANEL: Output ---- */
+  .panel-right {
+    flex: 1; min-width: 400px;
+    background: #0f172a; display: flex; flex-direction: column;
+  }
+  .tabs { display: flex; border-bottom: 1px solid #334155; }
+  .tab {
+    padding: 12px 20px; font-size: 13px; font-weight: 600; color: #64748b;
+    cursor: pointer; border-bottom: 2px solid transparent; transition: 0.2s;
+  }
+  .tab.active { color: #818cf8; border-bottom-color: #818cf8; }
+  .tab-content {
+    flex: 1; padding: 20px; overflow-y: auto; display: none;
+  }
+  .tab-content.active { display: block; }
+
+  .output-box {
+    background: #1e293b; border: 1px solid #334155; border-radius: 8px;
+    padding: 16px; font-family: ui-monospace, monospace; font-size: 13px;
+    line-height: 1.6; white-space: pre-wrap; min-height: 200px;
+  }
+  .output-box.empty { color: #475569; font-style: italic; }
+
+  /* Highlighted prompt parts */
+  .highlight-role { background: rgba(139, 92, 246, 0.25); border-left: 3px solid #8b5cf6; padding: 4px 8px; margin: 4px 0; }
+  .highlight-fewshot { background: rgba(59, 130, 246, 0.2); border-left: 3px solid #3b82f6; padding: 4px 8px; margin: 4px 0; }
+  .highlight-base { background: rgba(16, 185, 129, 0.15); border-left: 3px solid #10b981; padding: 4px 8px; margin: 4px 0; }
+  .highlight-cot { background: rgba(245, 158, 11, 0.2); border-left: 3px solid #f59e0b; padding: 4px 8px; margin: 4px 0; }
+  .highlight-struct { background: rgba(236, 72, 153, 0.2); border-left: 3px solid #ec4899; padding: 4px 8px; margin: 4px 0; }
+
+  /* Applied techniques list */
+  .technique-tags {
+    display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px;
+  }
+  .tag {
+    font-size: 11px; padding: 4px 10px; border-radius: 20px; font-weight: 500;
+    background: #1e293b; border: 1px solid #334155; color: #94a3b8;
+  }
+  .tag.active-tag { background: #312e81; border-color: #818cf8; color: #c7d2fe; }
+
+  .status-bar {
+    padding: 8px 20px; font-size: 12px; color: #64748b;
+    border-top: 1px solid #334155; display: flex; align-items: center; gap: 8px;
+  }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #475569; }
+  .status-dot.live { background: #10b981; }
+  .status-dot.demo { background: #f59e0b; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Prompt Engineering Playground</h1>
+  <p>Write a prompt, toggle techniques, and see how each one transforms the output. Learn by doing.</p>
+</header>
+
+<div class="container">
+
+  <!-- LEFT: Base Prompt -->
+  <div class="panel-left">
+    <label for="basePrompt">Your Base Prompt</label>
+    <textarea id="basePrompt" placeholder="Write your prompt here...
+
+Example:
+"What is a smart contract?"
+"Explain gas fees in Ethereum"
+"Compare PoW and PoS consensus""></textarea>
+  </div>
+
+  <!-- CENTER: Techniques -->
+  <div class="panel-center">
+    <div class="section-title">Prompt Techniques</div>
+
+    <!-- Role Setting -->
+    <div class="technique-card" id="card-role">
+      <div class="header">
+        <span class="name">Role Setting</span>
+        <label class="toggle">
+          <input type="checkbox" id="toggle-role" onchange="toggleCard('role')">
+          <span class="slider"></span>
+        </label>
+      </div>
+      <p class="desc">Assign the AI a persona or expertise. Shapes tone, depth, and perspective.</p>
+      <select class="role-select" id="role-select" onchange="updateCustomRole()">
+        <option value="You are a helpful assistant.">General Assistant</option>
+        <option value="You are a senior blockchain engineer who explains concepts clearly and points out security trade-offs.">Blockchain Engineer</option>
+        <option value="You are a patient math teacher who explains every step and checks for understanding.">Math Teacher</option>
+        <option value="You are a skeptical code reviewer who finds edge cases and potential bugs.">Code Reviewer</option>
+        <option value="custom">Custom Role...</option>
+      </select>
+      <textarea class="examples-input" id="custom-role-input" style="display:none;"
+        placeholder="Describe the AI's role..."></textarea>
+    </div>
+
+    <!-- Chain of Thought -->
+    <div class="technique-card" id="card-cot">
+      <div class="header">
+        <span class="name">Chain of Thought</span>
+        <label class="toggle">
+          <input type="checkbox" id="toggle-cot" onchange="toggleCard('cot')">
+          <span class="slider"></span>
+        </label>
+      </div>
+      <p class="desc">Asks the model to reason step by step before answering. Improves accuracy on reasoning tasks.</p>
+    </div>
+
+    <!-- Few-shot Learning -->
+    <div class="technique-card" id="card-fewshot">
+      <div class="header">
+        <span class="name">Few-shot Learning</span>
+        <label class="toggle">
+          <input type="checkbox" id="toggle-fewshot" onchange="toggleCard('fewshot')">
+          <span class="slider"></span>
+        </label>
+      </div>
+      <p class="desc">Provide examples of desired input→output format. The model learns the pattern from your examples.</p>
+      <textarea class="examples-input" id="fewshot-examples" placeholder="Q: What is a smart contract?
+A: A smart contract is self-executing code stored on a blockchain that runs when predetermined conditions are met.
+
+Q: What is gas?
+A: Gas is the unit measuring computational effort for Ethereum transactions." style="min-height:80px;"></textarea>
+    </div>
+
+    <!-- Structured Output -->
+    <div class="technique-card" id="card-struct">
+      <div class="header">
+        <span class="name">Structured Output</span>
+        <label class="toggle">
+          <input type="checkbox" id="toggle-struct" onchange="toggleCard('struct')">
+          <span class="slider"></span>
+        </label>
+      </div>
+      <p class="desc">Request a specific output format. Useful for parsing or downstream processing.</p>
+      <select class="struct-select" id="struct-select">
+        <option value="json">JSON format</option>
+        <option value="headings">Headings & bullet points</option>
+      </select>
+    </div>
+
+    <!-- Temperature -->
+    <div class="temp-row">
+      <label>Temperature: <span class="temp-val" id="temp-val">0.7</span></label>
+      <input type="range" id="temperature" min="0" max="1" step="0.1" value="0.7"
+        oninput="document.getElementById('temp-val').textContent = this.value">
+    </div>
+
+    <button class="btn-generate" id="btn-generate" onclick="generate()">Generate</button>
+  </div>
+
+  <!-- RIGHT: Output -->
+  <div class="panel-right">
+    <div class="tabs">
+      <div class="tab active" data-tab="transformed" onclick="switchTab('transformed')">Transformed Prompt</div>
+      <div class="tab" data-tab="response" onclick="switchTab('response')">AI Response</div>
+    </div>
+
+    <div class="tab-content active" id="tab-transformed">
+      <div class="technique-tags" id="technique-tags"></div>
+      <div class="output-box empty" id="output-transformed">
+        Toggle techniques and click "Generate" to see how your prompt is transformed before being sent to the AI.
+      </div>
+    </div>
+
+    <div class="tab-content" id="tab-response">
+      <div class="output-box empty" id="output-response">
+        The AI response will appear here after you click "Generate".
+      </div>
+    </div>
+
+    <div class="status-bar">
+      <span class="status-dot" id="status-dot"></span>
+      <span id="status-text">Ready</span>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ---- Technique State ----
+const state = {
+  role: false,
+  cot: false,
+  fewshot: false,
+  struct: false,
+};
+
+function toggleCard(id) {
+  state[id] = !state[id];
+  const card = document.getElementById(`card-${id}`);
+  card.classList.toggle("active", state[id]);
+
+  if (id === "role") {
+    const show = state.role && document.getElementById("role-select").value === "custom";
+    document.getElementById("custom-role-input").style.display = show ? "block" : "none";
+  }
+}
+
+function updateCustomRole() {
+  const isCustom = document.getElementById("role-select").value === "custom";
+  document.getElementById("custom-role-input").style.display = (state.role && isCustom) ? "block" : "none";
+}
+
+function switchTab(name) {
+  document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+  document.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
+  document.querySelector(`.tab[data-tab="${name}"]`).classList.add("active");
+  document.getElementById(`tab-${name}`).classList.add("active");
+}
+
+function getTechniques() {
+  const techniques = {};
+
+  if (state.role) {
+    const sel = document.getElementById("role-select").value;
+    techniques.roleSetting = sel === "custom"
+      ? document.getElementById("custom-role-input").value || "You are a helpful assistant."
+      : sel;
+  }
+  if (state.cot) techniques.chainOfThought = true;
+  if (state.fewshot) {
+    techniques.fewShot = true;
+    techniques.customExamples = document.getElementById("fewshot-examples").value || undefined;
+  }
+  if (state.struct) {
+    techniques.structuredOutput = document.getElementById("struct-select").value;
+  }
+
+  return techniques;
+}
+
+async function generate() {
+  const basePrompt = document.getElementById("basePrompt").value.trim();
+  if (!basePrompt) {
+    alert("Please write a base prompt first.");
+    return;
+  }
+
+  const btn = document.getElementById("btn-generate");
+  btn.disabled = true;
+  btn.textContent = "Generating...";
+  setStatus("loading", "Calling Claude API...");
+
+  try {
+    const res = await fetch("/api/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        basePrompt,
+        techniques: getTechniques(),
+        temperature: parseFloat(document.getElementById("temperature").value),
+      }),
+    });
+
+    const data = await res.json();
+
+    if (data.error) {
+      document.getElementById("output-response").textContent = "Error: " + data.error;
+      document.getElementById("output-response").classList.remove("empty");
+      setStatus("error", "Error");
+      return;
+    }
+
+    // Render transformed prompt
+    renderTransformed(data.transformed, data.applied);
+    // Render AI response
+    document.getElementById("output-response").textContent = data.response;
+    document.getElementById("output-response").classList.remove("empty");
+
+    // Render technique tags
+    renderTags(data.applied);
+
+    setStatus("live", data.mode === "demo" ? "Demo mode (no API key)" : "Live response");
+    if (data.mode === "live") {
+      document.getElementById("status-dot").classList.add("live");
+    }
+    switchTab("response");
+  } catch (err) {
+    document.getElementById("output-response").textContent = "Connection error: " + err.message;
+    document.getElementById("output-response").classList.remove("empty");
+    setStatus("error", "Connection failed");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Generate";
+  }
+}
+
+function renderTransformed(transformed, applied) {
+  let html = "";
+  const hasAnyTechnique = applied.length > 0;
+
+  if (transformed.systemPrompt) {
+    html += `<div class="highlight-role"><strong>System Prompt:</strong>\n${transformed.systemPrompt}</div>\n\n`;
+  }
+
+  const userParts = parseUserPrompt(transformed.userPrompt, applied);
+
+  if (!hasAnyTechnique) {
+    html += `<div class="highlight-base">${escapeHtml(transformed.userPrompt)}</div>`;
+  } else {
+    for (const part of userParts) {
+      html += part;
+    }
+  }
+
+  const el = document.getElementById("output-transformed");
+  el.innerHTML = html || '<span class="empty">No transformation applied. The prompt is sent as-is.</span>';
+  el.classList.remove("empty");
+}
+
+function parseUserPrompt(userPrompt, applied) {
+  const parts = [];
+  let remaining = userPrompt;
+
+  // Detect few-shot prefix
+  const hasFewShot = applied.some(a => a.name === "Few-shot Learning");
+  const hasCoT = applied.some(a => a.name === "Chain of Thought");
+  const hasStruct = applied.some(a => a.name === "Structured Output");
+
+  if (hasFewShot) {
+    const marker = "\n\n---\nNow answer this:\n\n";
+    const idx = remaining.indexOf(marker);
+    if (idx !== -1) {
+      parts.push(`<div class="highlight-fewshot"><strong>Few-shot Examples:</strong>\n${escapeHtml(remaining.slice(0, idx))}</div>\n\n`);
+      remaining = remaining.slice(idx + marker.length);
+    }
+  }
+
+  // Show base prompt
+  let baseEnd = remaining;
+  let cotPart = "";
+  let structPart = "";
+
+  if (hasCoT && hasStruct) {
+    // Both — find which comes first
+    const cotIdx = remaining.indexOf("\n\nThink through this step by step");
+    const structIdx = remaining.indexOf("\n\nPlease respond in valid JSON");
+    if (structIdx === -1) {
+      const si = remaining.indexOf("\n\nPlease format your response");
+      if (si !== -1 && cotIdx !== -1) {
+        if (cotIdx < si) {
+          baseEnd = remaining.slice(0, cotIdx);
+          cotPart = remaining.slice(cotIdx, si);
+          structPart = remaining.slice(si);
+        } else {
+          baseEnd = remaining.slice(0, si);
+          structPart = remaining.slice(si, cotIdx);
+          cotPart = remaining.slice(cotIdx);
+        }
+      }
+    } else if (cotIdx !== -1) {
+      if (cotIdx < structIdx) {
+        baseEnd = remaining.slice(0, cotIdx);
+        cotPart = remaining.slice(cotIdx, structIdx);
+        structPart = remaining.slice(structIdx);
+      } else {
+        baseEnd = remaining.slice(0, structIdx);
+        structPart = remaining.slice(structIdx, cotIdx);
+        cotPart = remaining.slice(cotIdx);
+      }
+    }
+  } else if (hasCoT) {
+    const idx = remaining.indexOf("\n\nThink through this step by step");
+    if (idx !== -1) {
+      baseEnd = remaining.slice(0, idx);
+      cotPart = remaining.slice(idx);
+    }
+  } else if (hasStruct) {
+    const jsonIdx = remaining.indexOf("\n\nPlease respond in valid JSON");
+    const headIdx = remaining.indexOf("\n\nPlease format your response");
+    const idx = jsonIdx !== -1 ? jsonIdx : (headIdx !== -1 ? headIdx : -1);
+    if (idx !== -1) {
+      baseEnd = remaining.slice(0, idx);
+      structPart = remaining.slice(idx);
+    }
+  }
+
+  if (baseEnd) {
+    parts.push(`<div class="highlight-base"><strong>Your Base Prompt:</strong>\n${escapeHtml(baseEnd)}</div>\n\n`);
+  }
+  if (cotPart) {
+    parts.push(`<div class="highlight-cot"><strong>Chain of Thought:</strong>\n${escapeHtml(cotPart)}</div>\n\n`);
+  }
+  if (structPart) {
+    parts.push(`<div class="highlight-struct"><strong>Structured Output:</strong>\n${escapeHtml(structPart)}</div>\n\n`);
+  }
+
+  return parts;
+}
+
+function renderTags(applied) {
+  const allTechniques = ["Role Setting", "Chain of Thought", "Few-shot Learning", "Structured Output"];
+  let html = "";
+  for (const t of allTechniques) {
+    const isActive = applied.some(a => a.name === t);
+    html += `<span class="tag${isActive ? " active-tag" : ""}">${isActive ? "✓" : "—"} ${t}</span>`;
+  }
+  document.getElementById("technique-tags").innerHTML = html;
+}
+
+function setStatus(mode, text) {
+  document.getElementById("status-text").textContent = text;
+  const dot = document.getElementById("status-dot");
+  dot.classList.remove("live", "demo");
+  if (mode === "live") dot.classList.add("live");
+  else if (mode === "demo") dot.classList.add("demo");
+}
+
+function escapeHtml(str) {
+  const div = document.createElement("div");
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// Init: check if server is live vs demo
+(async function init() {
+  try {
+    const res = await fetch("/api/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ basePrompt: "ping", techniques: {}, temperature: 0 }),
+    });
+    const data = await res.json();
+    setStatus(data.mode === "demo" ? "demo" : "live",
+      data.mode === "demo" ? "Demo mode — set ANTHROPIC_API_KEY in .env" : "Live — API connected");
+    if (data.mode === "live") document.getElementById("status-dot").classList.add("live");
+    else document.getElementById("status-dot").classList.add("demo");
+  } catch (e) {
+    setStatus("error", "Server unreachable");
+  }
+})();
+</script>
+
+</body>
+</html>
