@@ -1,0 +1,4 @@
+{
+  "solidity.defaultCompiler": "localFile",
+  "solidity.compileUsingLocalVersion": "/home/bodier/.vscode-server/extensions/juanblanco.solidity-0.0.187/soljson-v0.8.33+commit.64118f21.js"
+}
