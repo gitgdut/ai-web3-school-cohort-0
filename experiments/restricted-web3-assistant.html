@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>受限 Web3 助手 — Swap 演示</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: #0d1117;
+    color: #c9d1d9;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+  }
+
+  .container {
+    max-width: 1000px;
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 280px;
+    gap: 20px;
+  }
+
+  /* ============ 顶部概念条 ============ */
+  .concept-bar {
+    grid-column: 1 / -1;
+    background: linear-gradient(135deg, #161b22, #1c2129);
+    border: 1px solid #30363d;
+    border-radius: 12px;
+    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .concept-bar .icon { font-size: 28px; }
+  .concept-bar .text strong { color: #58a6ff; }
+  .concept-bar .text .highlight { 
+    color: #f78166; 
+    font-weight: 600;
+  }
+
+  /* ============ 主面板 ============ */
+  .main-panel {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 12px;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-height: 500px;
+  }
+
+  .chat-area {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-height: 420px;
+    padding-right: 4px;
+  }
+
+  /* 聊天气泡 */
+  .bubble {
+    max-width: 85%;
+    padding: 12px 16px;
+    border-radius: 12px;
+    font-size: 14px;
+    line-height: 1.6;
+    animation: fadeIn 0.3s ease;
+  }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+  .bubble.user {
+    align-self: flex-end;
+    background: #1f6feb;
+    color: #fff;
+    border-bottom-right-radius: 4px;
+  }
+  .bubble.ai {
+    align-self: flex-start;
+    background: #21262d;
+    border: 1px solid #30363d;
+    border-bottom-left-radius: 4px;
+  }
+  .bubble.system {
+    align-self: center;
+    background: transparent;
+    border: 1px dashed #30363d;
+    color: #8b949e;
+    font-size: 12px;
+    text-align: center;
+    padding: 8px 14px;
+  }
+
+  /* AI 预览卡片 */
+  .preview-card {
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    padding: 14px;
+    margin-top: 4px;
+  }
+  .preview-card .row {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 0;
+    font-size: 13px;
+  }
+  .preview-card .row.highlight {
+    font-size: 16px;
+    font-weight: 600;
+    color: #58a6ff;
+    border-top: 1px solid #21262d;
+    border-bottom: 1px solid #21262d;
+    padding: 10px 0;
+    margin: 4px 0;
+  }
+  .preview-card .label { color: #8b949e; }
+
+  /* 输入区 */
+  .input-area {
+    display: flex;
+    gap: 8px;
+  }
+  .input-area input {
+    flex: 1;
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    padding: 12px 16px;
+    color: #c9d1d9;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .input-area input:focus { border-color: #1f6feb; }
+  .input-area input:disabled { opacity: 0.4; cursor: not-allowed; }
+  .input-area button {
+    background: #238636;
+    border: none;
+    border-radius: 8px;
+    padding: 12px 20px;
+    color: #fff;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+    white-space: nowrap;
+  }
+  .input-area button:hover { background: #2ea043; }
+  .input-area button:disabled { 
+    background: #21262d; 
+    color: #484f58; 
+    cursor: not-allowed;
+  }
+  .input-area button.danger {
+    background: #da3633;
+  }
+  .input-area button.danger:hover {
+    background: #f85149;
+  }
+
+  /* ============ 安全面板 ============ */
+  .security-panel {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 12px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .security-panel h3 {
+    font-size: 14px;
+    color: #8b949e;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+  }
+
+  .boundary-line {
+    border: 2px dashed #30363d;
+    border-radius: 8px;
+    padding: 12px;
+    text-align: center;
+    color: #f78166;
+    font-size: 13px;
+    font-weight: 600;
+    margin: 8px 0;
+    position: relative;
+  }
+  .boundary-line::before {
+    content: "═══ 安全边界 ═══";
+    position: absolute;
+    top: -11px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #161b22;
+    padding: 0 10px;
+    font-size: 11px;
+    color: #f78166;
+  }
+
+  .step-indicator {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px;
+    border-radius: 8px;
+    font-size: 13px;
+    transition: all 0.3s;
+  }
+  .step-indicator.active {
+    background: #1a2332;
+    border: 1px solid #1f6feb;
+  }
+  .step-indicator.done {
+    opacity: 0.5;
+  }
+  .step-indicator .badge {
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+  .badge.ai { background: #1f6feb22; color: #58a6ff; border: 1px solid #1f6feb; }
+  .badge.human { background: #da363322; color: #f85149; border: 1px solid #da3633; }
+  .badge.forbidden { background: #f7816622; color: #f78166; border: 1px solid #f78166; }
+
+  /* ============ 钱包弹窗 ============ */
+  .wallet-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 100;
+    justify-content: center;
+    align-items: center;
+  }
+  .wallet-overlay.show { display: flex; }
+  .wallet-modal {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 16px;
+    padding: 28px;
+    width: 380px;
+    max-width: 90vw;
+    animation: scaleIn 0.2s ease;
+  }
+  @keyframes scaleIn { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  .wallet-modal h2 { font-size: 18px; margin-bottom: 6px; }
+  .wallet-modal .subtitle { color: #8b949e; font-size: 13px; margin-bottom: 20px; }
+  .wallet-modal .tx-detail {
+    background: #0d1117;
+    border-radius: 8px;
+    padding: 14px;
+    margin-bottom: 20px;
+    font-size: 13px;
+    line-height: 1.8;
+  }
+  .wallet-modal .warning {
+    background: #da363311;
+    border: 1px solid #da363344;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 12px;
+    color: #f85149;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .wallet-modal .actions { display: flex; gap: 10px; }
+  .wallet-modal .actions button {
+    flex: 1;
+    padding: 12px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    transition: all 0.2s;
+  }
+  .wallet-modal .btn-reject {
+    background: #21262d;
+    color: #c9d1d9;
+    border: 1px solid #30363d;
+  }
+  .wallet-modal .btn-reject:hover { background: #30363d; }
+  .wallet-modal .btn-confirm {
+    background: #238636;
+    color: #fff;
+    position: relative;
+    overflow: hidden;
+  }
+  .wallet-modal .btn-confirm:hover { background: #2ea043; }
+  .wallet-modal .btn-confirm .lock-icon {
+    position: absolute;
+    right: 12px;
+    opacity: 0.5;
+  }
+
+  /* ============ 进度条 ============ */
+  .progress-bar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 8px;
+  }
+  .progress-step {
+    flex: 1;
+    height: 4px;
+    background: #21262d;
+    border-radius: 2px;
+    transition: background 0.5s;
+  }
+  .progress-step.done { background: #238636; }
+  .progress-step.active { background: #1f6feb; }
+
+  /* ============ 响应式 ============ */
+  @media (max-width: 720px) {
+    .container { grid-template-columns: 1fr; }
+    .security-panel { order: -1; }
+  }
+
+  /* 滚动条 */
+  .chat-area::-webkit-scrollbar { width: 4px; }
+  .chat-area::-webkit-scrollbar-track { background: transparent; }
+  .chat-area::-webkit-scrollbar-thumb { background: #30363d; border-radius: 2px; }
+
+  /* 闪烁动画（AI 思考中） */
+  .typing-dot {
+    display: inline-block;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: #58a6ff;
+    animation: blink 1.4s infinite;
+    margin: 0 1px;
+  }
+  .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+  .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes blink { 0%,60%,100% { opacity: 0.3; } 30% { opacity: 1; } }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <!-- ========== 顶部概念条 ========== -->
+  <div class="concept-bar">
+    <span class="icon">🛡️</span>
+    <span class="text">
+      <strong>受限 Web3 助手</strong> — AI 是你的副驾驶：
+      可以<span style="color:#58a6ff">查询、分析、规划、生成草稿</span>，
+      但 <span class="highlight">绝对不能接触私钥，不能代你签名或转账</span>。
+      最后一步永远在你手上。
+    </span>
+  </div>
+
+  <!-- ========== 左侧主面板 ========== -->
+  <div class="main-panel">
+    <div class="chat-area" id="chatArea">
+      <!-- 初始消息 -->
+      <div class="bubble system">
+        🤖 受限 Web3 助手已启动 · 场景：Uniswap Swap（模拟）<br>
+        试试输入：<code style="color:#58a6ff">用 500 USDC 换 ETH</code>
+      </div>
+    </div>
+
+    <div class="input-area" id="inputArea">
+      <input type="text" id="userInput" placeholder="描述你想做的操作，比如：用 500 USDC 换 ETH…" 
+             onkeydown="if(event.key==='Enter')handleSend()">
+      <button id="sendBtn" onclick="handleSend()">发送</button>
+    </div>
+
+    <!-- 进度条 -->
+    <div class="progress-bar">
+      <div class="progress-step" id="step1"></div>
+      <div class="progress-step" id="step2"></div>
+      <div class="progress-step" id="step3"></div>
+      <div class="progress-step" id="step4"></div>
+    </div>
+  </div>
+
+  <!-- ========== 右侧安全面板 ========== -->
+  <div class="security-panel" id="securityPanel">
+    <h3>🔐 步骤归属</h3>
+
+    <div class="boundary-line"></div>
+
+    <div class="step-indicator" id="si1">
+      <span class="badge ai">🤖</span>
+      <span>AI 读取链上数据</span>
+    </div>
+    <div class="step-indicator" id="si2">
+      <span class="badge ai">🤖</span>
+      <span>AI 生成交易预览</span>
+    </div>
+
+    <div class="boundary-line"></div>
+
+    <div class="step-indicator" id="si3">
+      <span class="badge human">🔒</span>
+      <span><strong>你必须手动签名</strong></span>
+    </div>
+
+    <div class="step-indicator" id="si4">
+      <span class="badge ai">🤖</span>
+      <span>AI 验证交易结果</span>
+    </div>
+
+    <div class="boundary-line"></div>
+
+    <div style="font-size:11px;color:#f78166;line-height:1.6;padding:8px;background:#f7816608;border-radius:8px;">
+      🚫 <strong>AI 绝对不能：</strong><br>
+      · 接触你的私钥/助记词<br>
+      · 代你签名交易<br>
+      · 绕过确认自动转账<br>
+      · 存储你的 API Key
+    </div>
+  </div>
+</div>
+
+<!-- ========== 模拟钱包弹窗 ========== -->
+<div class="wallet-overlay" id="walletOverlay">
+  <div class="wallet-modal">
+    <h2>🦊 MetaMask</h2>
+    <div class="subtitle">模拟钱包 · 确认交易</div>
+
+    <div class="tx-detail" id="walletTxDetail">
+      <!-- JS 动态填充 -->
+    </div>
+
+    <div class="warning">
+      ⚠️ <span><strong>这是最关键的一步！</strong> AI 无法替你完成。<br>
+      请仔细核对金额和地址后再确认。</span>
+    </div>
+
+    <div class="actions">
+      <button class="btn-reject" onclick="handleWalletReject()">✕ 拒绝</button>
+      <button class="btn-confirm" onclick="handleWalletConfirm()">
+        ✓ 确认
+        <span class="lock-icon">🔒</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ==================== 状态管理 ====================
+let currentStep = 0;   // 0=等待输入, 1=AI查数据, 2=预览, 3=签名, 4=结果
+let txData = null;
+
+// ==================== 辅助函数 ====================
+function addBubble(type, html) {
+  const div = document.createElement('div');
+  div.className = `bubble ${type}`;
+  div.innerHTML = html;
+  document.getElementById('chatArea').appendChild(div);
+  document.getElementById('chatArea').scrollTop = document.getElementById('chatArea').scrollHeight;
+  return div;
+}
+
+function updateProgress(step) {
+  for (let i = 1; i <= 4; i++) {
+    const el = document.getElementById('step' + i);
+    el.className = 'progress-step';
+    if (i < step) el.classList.add('done');
+    if (i === step) el.classList.add('active');
+  }
+  // 右侧面板
+  for (let i = 1; i <= 4; i++) {
+    const si = document.getElementById('si' + i);
+    si.className = 'step-indicator';
+    if (i === step) si.classList.add('active');
+    if (i < step) si.classList.add('done');
+  }
+}
+
+function disableInput(disabled) {
+  document.getElementById('userInput').disabled = disabled;
+  document.getElementById('sendBtn').disabled = disabled;
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function randomAmount(min, max, decimals) {
+  return (Math.random() * (max - min) + min).toFixed(decimals);
+}
+
+// ==================== 场景解析 ====================
+function parseSwapIntent(text) {
+  // 简单解析用户输入
+  const match = text.match(/(\d+\.?\d*)\s*(USDC|USDT|DAI|ETH|WBTC)/gi);
+  if (!match || match.length < 2) {
+    return { amount: '500', tokenIn: 'USDC', tokenOut: 'ETH' };
+  }
+  return {
+    amount: match[0].replace(/[^0-9.]/g, ''),
+    tokenIn: match[0].replace(/[0-9.\s]/g, '').toUpperCase(),
+    tokenOut: match[1].replace(/[0-9.\s]/g, '').toUpperCase(),
+  };
+}
+
+// ==================== 步骤 1+2：AI 分析 ====================
+async function handleSend() {
+  const input = document.getElementById('userInput');
+  const text = input.value.trim();
+  if (!text || currentStep > 0) return;
+
+  const intent = parseSwapIntent(text);
+
+  // 显示用户消息
+  addBubble('user', text);
+  input.value = '';
+  disableInput(true);
+  currentStep = 1;
+  updateProgress(1);
+
+  // AI "思考中"
+  const thinkingBubble = addBubble('ai', '<span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span> 正在查询链上数据（只读）…');
+
+  // 模拟延迟
+  await sleep(1800);
+  thinkingBubble.remove();
+
+  // 步骤 1 完成：显示链上查询结果
+  addBubble('ai', `
+    📡 <strong>链上查询完成</strong>（只读操作，无需签名）<br>
+    <span style="color:#8b949e;font-size:12px;">
+    · Uniswap V3 ${intent.tokenIn}/${intent.tokenOut} 池子已找到<br>
+    · 当前流动性：$12.4M TVL<br>
+    · 24h 交易量：$3.2M<br>
+    · 当前汇率：1 ${intent.tokenIn} ≈ ${randomAmount(0.0002, 0.0004, 4)} ${intent.tokenOut}
+    </span>
+  `);
+
+  currentStep = 2;
+  updateProgress(2);
+
+  await sleep(1200);
+
+  // 步骤 2：生成交易预览
+  const amountIn = parseFloat(intent.amount);
+  const rate = 0.0002 + Math.random() * 0.0002;
+  const amountOut = amountIn * rate;
+  const slippage = (Math.random() * 0.8 + 0.1).toFixed(2);
+  const gasUSD = (Math.random() * 5 + 2).toFixed(2);
+  const gasETH = (gasUSD / 3000).toFixed(6);
+  const priceImpact = (Math.random() * 0.5).toFixed(2);
+
+  txData = {
+    amountIn, tokenIn: intent.tokenIn, amountOut: amountOut.toFixed(6),
+    tokenOut: intent.tokenOut, rate: rate.toFixed(6), slippage,
+    gasUSD, gasETH, priceImpact,
+    to: '0x' + Array.from({length:40}, () => Math.floor(Math.random()*16).toString(16)).join(''),
+    from: '0x' + Array.from({length:40}, () => Math.floor(Math.random()*16).toString(16)).join(''),
+  };
+
+  addBubble('ai', `
+    📋 <strong>AI 交易预览</strong>（仅供确认，AI 不执行）
+    <div class="preview-card">
+      <div class="row"><span class="label">支付</span><span>${txData.amountIn} ${txData.tokenIn}</span></div>
+      <div class="row"><span class="label">获得</span><span style="color:#3fb950">≈ ${txData.amountOut} ${txData.tokenOut}</span></div>
+      <div class="row highlight"><span class="label">汇率</span><span>1 ${txData.tokenIn} ≈ ${txData.rate} ${txData.tokenOut}</span></div>
+      <div class="row"><span class="label">滑点容忍</span><span>${txData.slippage}%</span></div>
+      <div class="row"><span class="label">价格影响</span><span>${txData.priceImpact}%</span></div>
+      <div class="row"><span class="label">预估 Gas</span><span>\$${txData.gasUSD}（${txData.gasETH} ETH）</span></div>
+    </div>
+  `);
+
+  await sleep(800);
+
+  // 提示进入签名步骤
+  addBubble('system', `
+    ⚡ 以上均为 <span style="color:#58a6ff">🤖 AI 辅助</span>（只读，零风险）<br>
+    下一步需要 <span style="color:#f85149">🔒 你手动签名确认</span> — 这是 AI 不能代劳的步骤
+  `);
+
+  currentStep = 3;
+  updateProgress(3);
+
+  // 更换发送按钮为签名按钮
+  const btn = document.getElementById('sendBtn');
+  btn.textContent = '🔒 打开钱包签名';
+  btn.className = 'danger';
+  btn.onclick = openWallet;
+  btn.disabled = false;
+  document.getElementById('userInput').placeholder = '点击右侧按钮打开模拟钱包…';
+}
+
+// ==================== 步骤 3：钱包签名 ====================
+function openWallet() {
+  if (currentStep !== 3) return;
+
+  // 填充钱包弹窗内容
+  document.getElementById('walletTxDetail').innerHTML = `
+    <div style="color:#8b949e;font-size:11px;margin-bottom:4px;">发送方</div>
+    <div style="font-family:monospace;font-size:11px;word-break:break-all;margin-bottom:12px;">${txData.from}</div>
+    <div style="color:#8b949e;font-size:11px;margin-bottom:4px;">接收方（Uniswap V3 Router）</div>
+    <div style="font-family:monospace;font-size:11px;word-break:break-all;margin-bottom:12px;">${txData.to}</div>
+    <div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid #21262d;">
+      <span style="color:#8b949e;">金额</span>
+      <span style="font-weight:600;">${txData.amountIn} ${txData.tokenIn}</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;padding:8px 0;">
+      <span style="color:#8b949e;">预估获得</span>
+      <span style="color:#3fb950;">≈ ${txData.amountOut} ${txData.tokenOut}</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid #21262d;">
+      <span style="color:#8b949e;">Gas 费</span>
+      <span>\$${txData.gasUSD}</span>
+    </div>
+  `;
+
+  document.getElementById('walletOverlay').classList.add('show');
+  disableInput(true);
+  document.getElementById('sendBtn').disabled = true;
+}
+
+function handleWalletReject() {
+  document.getElementById('walletOverlay').classList.remove('show');
+  addBubble('system', '❌ <span style="color:#f85149">你拒绝了交易。</span> 这完全没问题——你有最终决定权。');
+  resetUI();
+}
+
+function handleWalletConfirm() {
+  document.getElementById('walletOverlay').classList.remove('show');
+  currentStep = 4;
+  updateProgress(4);
+
+  // 模拟交易上链
+  addBubble('system', `
+    🔒 <span style="color:#f85149">你已手动签名确认</span> — 这是唯一需要人工介入的步骤<br>
+    <span style="color:#8b949e;font-size:12px;">（在真实场景中，你的钱包会用私钥签名，AI 全程看不到私钥）</span>
+  `);
+
+  setTimeout(() => {
+    const txHash = '0x' + Array.from({length:64}, () => Math.floor(Math.random()*16).toString(16)).join('');
+    const actualOut = (txData.amountOut * (1 - Math.random() * 0.005)).toFixed(6);
+    const diff = ((parseFloat(actualOut) - parseFloat(txData.amountOut)) / parseFloat(txData.amountOut) * 100).toFixed(2);
+
+    addBubble('ai', `
+      ✅ <strong>交易成功！</strong>AI 帮你验证结果（只读）
+      <div class="preview-card">
+        <div class="row"><span class="label">Tx Hash</span><span style="font-family:monospace;font-size:11px;color:#58a6ff;">${txHash.slice(0,20)}…</span></div>
+        <div class="row"><span class="label">实际获得</span><span style="color:#3fb950;">${actualOut} ${txData.tokenOut}</span></div>
+        <div class="row"><span class="label">与预览差异</span><span style="color:${diff > 0 ? '#3fb950' : '#f85149'}">${diff}%</span></div>
+        <div class="row"><span class="label">状态</span><span style="color:#3fb950;">Confirmed ✓</span></div>
+      </div>
+    `);
+
+    // 总结
+    setTimeout(() => {
+      addBubble('system', `
+        🎯 <strong>流程总结</strong><br>
+        <span style="color:#58a6ff;">🤖 AI 做了</span>：查池子、算汇率、估滑点、生成预览、验证结果<br>
+        <span style="color:#f85149;">🔒 你做了</span>：核对信息、签名确认（AI 无法代劳）<br>
+        <span style="color:#f78166;">🚫 AI 没碰</span>：你的私钥、助记词、钱包密码
+      `);
+      resetUI();
+    }, 1500);
+  }, 1200);
+}
+
+function resetUI() {
+  currentStep = 0;
+  txData = null;
+  disableInput(false);
+  document.getElementById('userInput').value = '';
+  document.getElementById('userInput').placeholder = '再来一次？比如：用 1000 DAI 换 WBTC…';
+  const btn = document.getElementById('sendBtn');
+  btn.textContent = '发送';
+  btn.className = '';
+  btn.onclick = handleSend;
+  btn.disabled = false;
+  updateProgress(0);
+}
+
+// 初始化
+updateProgress(0);
+</script>
+</body>
+</html>
