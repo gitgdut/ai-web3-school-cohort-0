@@ -64,3 +64,7 @@ $ forge --help
 $ anvil --help
 $ cast --help
 ```
+<img width="2106" height="225" alt="屏幕截图 2026-05-24 190530" src="https://github.com/user-attachments/assets/705468cc-97d9-4031-808f-5b74bc13895a" />
+<img width="2122" height="98" alt="屏幕截图 2026-05-24 191718" src="https://github.com/user-attachments/assets/a5d044b5-fb50-4ba4-8af9-c20d8fbd9ee7" />
+<img width="2103" height="774" alt="屏幕截图 2026-05-24 191737" src="https://github.com/user-attachments/assets/21a89b0e-6b42-4fa3-8a61-f0e80abfd6d4" />
+
