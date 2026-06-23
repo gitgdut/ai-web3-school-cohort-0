@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AMM Swap Simulator — 理解恒定乘积做市商</title>
+<style>
+  /* ═══════════════════════════════════════════
+     DESIGN SYSTEM — AI 辅助生成，人工调优
+     ═══════════════════════════════════════════ */
+  :root {
+    --bg: #0a0e17;
+    --surface: #131a2b;
+    --surface-raised: #1a2338;
+    --border: #1e2d45;
+    --text: #e2e8f0;
+    --text-muted: #8899b4;
+    --accent: #5eead4;
+    --accent-dim: #0d9488;
+    --purple: #a78bfa;
+    --red: #f87171;
+    --amber: #fbbf24;
+    --radius: 12px;
+    --radius-sm: 8px;
+    --font-mono: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+    --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--font-sans);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 40px 20px 80px;
+    line-height: 1.6;
+  }
+
+  /* ── Header ── */
+  .header {
+    text-align: center;
+    max-width: 700px;
+    margin-bottom: 48px;
+  }
+  .header h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin-bottom: 8px;
+  }
+  .header h1 .accent { color: var(--accent); }
+  .header .subtitle {
+    color: var(--text-muted);
+    font-size: 0.95rem;
+  }
+  .header .ai-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 12px;
+    padding: 4px 12px;
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+  }
+  .ai-badge .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--purple);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 1; }
+  }
+
+  /* ── Main Layout ── */
+  .main {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    max-width: 1000px;
+    width: 100%;
+  }
+  @media (max-width: 780px) {
+    .main { grid-template-columns: 1fr; }
+  }
+
+  /* ── Card ── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 28px;
+  }
+  .card h2 {
+    font-size: 1.05rem;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+  .card h2 .icon { margin-right: 6px; }
+  .card .card-desc {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    margin-bottom: 20px;
+  }
+
+  /* ── Pool Visualization ── */
+  .pool-viz {
+    display: flex;
+    gap: 20px;
+    align-items: flex-end;
+    justify-content: center;
+    height: 140px;
+    margin-bottom: 24px;
+  }
+  .pool-column {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+  .pool-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+  .pool-bar-wrap {
+    width: 80px;
+    height: 100px;
+    background: var(--surface-raised);
+    border-radius: var(--radius-sm);
+    position: relative;
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+  .pool-bar {
+    position: absolute;
+    bottom: 0;
+    width: 100%;
+    border-radius: var(--radius-sm);
+    transition: height 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .pool-bar.token-a { background: linear-gradient(180deg, var(--accent), var(--accent-dim)); }
+  .pool-bar.token-b { background: linear-gradient(180deg, var(--purple), #7c3aed); }
+  .pool-amount {
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    font-weight: 600;
+  }
+  .pool-amount.token-a { color: var(--accent); }
+  .pool-amount.token-b { color: var(--purple); }
+
+  /* ── K value display ── */
+  .k-display {
+    text-align: center;
+    margin-bottom: 20px;
+    padding: 12px;
+    background: var(--surface-raised);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+  }
+  .k-display .k-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 2px;
+  }
+  .k-display .k-value {
+    font-family: var(--font-mono);
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: var(--amber);
+  }
+  .k-display .k-note {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+
+  /* ── Form ── */
+  .form-group {
+    margin-bottom: 16px;
+  }
+  .form-group label {
+    display: block;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .form-group input, .form-group select {
+    width: 100%;
+    padding: 10px 14px;
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 0.9rem;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .form-group input:focus, .form-group select:focus {
+    border-color: var(--accent);
+  }
+  .form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .swap-direction {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 8px 0 16px;
+  }
+  .swap-arrow {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 1.1rem;
+    transition: all 0.2s;
+    color: var(--text-muted);
+  }
+  .swap-arrow:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .btn {
+    width: 100%;
+    padding: 12px;
+    background: var(--accent);
+    color: var(--bg);
+    border: none;
+    border-radius: var(--radius-sm);
+    font-weight: 700;
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: var(--font-sans);
+  }
+  .btn:hover { filter: brightness(1.1); }
+  .btn:active { transform: scale(0.98); }
+
+  /* ── Quick amount buttons ── */
+  .quick-amounts {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+  }
+  .quick-btn {
+    padding: 4px 10px;
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: var(--font-mono);
+  }
+  .quick-btn:hover, .quick-btn.active {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  /* ── Results Panel ── */
+  .result-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .result-row:last-child { border-bottom: none; }
+  .result-label { color: var(--text-muted); font-size: 0.82rem; }
+  .result-value { font-family: var(--font-mono); font-weight: 600; font-size: 0.9rem; }
+  .result-value.positive { color: var(--accent); }
+  .result-value.warning { color: var(--amber); }
+  .result-value.danger { color: var(--red); }
+
+  /* ── AI Explanation ── */
+  .ai-section {
+    margin-top: 24px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+  }
+  .ai-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .ai-header .ai-icon {
+    font-size: 1.2rem;
+  }
+  .ai-header .ai-label {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .ai-header .ai-thinking {
+    font-size: 0.75rem;
+    color: var(--amber);
+    animation: blink 1s steps(1) infinite;
+  }
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+  .ai-explanation {
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 16px;
+    font-size: 0.88rem;
+    line-height: 1.7;
+    color: var(--text);
+    min-height: 80px;
+    transition: opacity 0.3s;
+  }
+  .ai-explanation .typing-cursor {
+    display: inline-block;
+    width: 2px;
+    height: 1em;
+    background: var(--accent);
+    vertical-align: text-bottom;
+    animation: blink 0.8s steps(1) infinite;
+  }
+  .ai-explanation .highlight {
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .ai-explanation .highlight-purple {
+    color: var(--purple);
+    font-weight: 600;
+  }
+
+  /* ── Formula display ── */
+  .formula-box {
+    text-align: center;
+    padding: 16px;
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    margin-bottom: 20px;
+  }
+  .formula-box .formula {
+    font-family: var(--font-mono);
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--amber);
+  }
+  .formula-box .formula-desc {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    margin-top: 4px;
+  }
+
+  /* ── Annotation tags ── */
+  .annotation {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+  }
+  .annotation.ai-gen {
+    background: rgba(167, 139, 250, 0.15);
+    color: var(--purple);
+    border: 1px solid rgba(167, 139, 250, 0.3);
+  }
+  .annotation.human-verify {
+    background: rgba(94, 234, 212, 0.12);
+    color: var(--accent);
+    border: 1px solid rgba(94, 234, 212, 0.3);
+  }
+
+  /* ── Legend ── */
+  .legend {
+    display: flex;
+    gap: 16px;
+    margin-top: 32px;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  /* ── Footer ── */
+  .footer {
+    margin-top: 48px;
+    text-align: center;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    max-width: 700px;
+  }
+  .footer a { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1><span class="accent">AMM</span> Swap Simulator</h1>
+  <p class="subtitle">理解去中心化交易所的核心：恒定乘积做市商 x · y = k</p>
+  <div class="ai-badge">
+    <span class="dot"></span>
+    AI 辅助生成 · 人工校验
+  </div>
+</div>
+
+<div class="main">
+  <!-- ═══ LEFT: INPUT PANEL ═══ -->
+  <div class="card">
+    <h2><span class="icon">⚙️</span> 配置交易</h2>
+    <p class="card-desc">设置流动性池参数并输入你要交换的数量</p>
+
+    <div class="formula-box">
+      <div class="formula">x · y = k</div>
+      <div class="formula-desc">恒定乘积公式 — 池中两种代币数量之积始终保持不变</div>
+    </div>
+
+    <!-- Pool reserves -->
+    <div class="form-row">
+      <div class="form-group">
+        <label>代币 A 储备量</label>
+        <input type="number" id="reserveA" value="10000" min="1" step="any">
+      </div>
+      <div class="form-group">
+        <label>代币 B 储备量</label>
+        <input type="number" id="reserveB" value="30000" min="1" step="any">
+      </div>
+    </div>
+
+    <!-- Pool visualization -->
+    <div class="pool-viz" id="poolViz">
+      <div class="pool-column">
+        <span class="pool-label">A</span>
+        <div class="pool-bar-wrap">
+          <div class="pool-bar token-a" id="barA" style="height: 40%;"></div>
+        </div>
+        <span class="pool-amount token-a" id="amountA">10,000</span>
+      </div>
+      <div class="pool-column">
+        <span class="pool-label">B</span>
+        <div class="pool-bar-wrap">
+          <div class="pool-bar token-b" id="barB" style="height: 100%;"></div>
+        </div>
+        <span class="pool-amount token-b" id="amountB">30,000</span>
+      </div>
+    </div>
+
+    <!-- k display -->
+    <div class="k-display">
+      <div class="k-label">恒定乘积 k</div>
+      <div class="k-value" id="kValue">300,000,000</div>
+      <div class="k-note" id="kNote">x · y = 10,000 × 30,000</div>
+    </div>
+
+    <!-- Swap direction -->
+    <div class="swap-direction">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <span style="font-weight:600;color:var(--accent);" id="fromToken">A</span>
+        <span class="swap-arrow" id="swapDir" title="点击切换方向">→</span>
+        <span style="font-weight:600;color:var(--purple);" id="toToken">B</span>
+      </div>
+    </div>
+
+    <!-- Swap input -->
+    <div class="form-group">
+      <label id="swapLabel">输入 A 的数量</label>
+      <input type="number" id="swapAmount" value="100" min="0.01" step="any" placeholder="输入要交换的数量">
+      <div class="quick-amounts" id="quickAmounts">
+        <button class="quick-btn" data-amount="10">10</button>
+        <button class="quick-btn active" data-amount="100">100</button>
+        <button class="quick-btn" data-amount="500">500</button>
+        <button class="quick-btn" data-amount="1000">1,000</button>
+        <button class="quick-btn" data-amount="5000">5,000</button>
+      </div>
+    </div>
+
+    <button class="btn" id="simulateBtn">🔍 模拟交易 + AI 分析</button>
+  </div>
+
+  <!-- ═══ RIGHT: RESULTS PANEL ═══ -->
+  <div class="card">
+    <h2><span class="icon">📊</span> 交易结果</h2>
+    <p class="card-desc">模拟交易后的输出、价格影响与 AI 解读</p>
+
+    <div id="resultsContent">
+      <div class="result-row">
+        <span class="result-label">你将支付</span>
+        <span class="result-value" id="resultPay">—</span>
+      </div>
+      <div class="result-row">
+        <span class="result-label">你将收到</span>
+        <span class="result-value positive" id="resultReceive">—</span>
+      </div>
+      <div class="result-row">
+        <span class="result-label">实际成交价</span>
+        <span class="result-value" id="resultPrice">—</span>
+      </div>
+      <div class="result-row">
+        <span class="result-label">价格影响 / 滑点</span>
+        <span class="result-value" id="resultSlippage">—</span>
+      </div>
+      <div class="result-row">
+        <span class="result-label">池中 A 的新储备</span>
+        <span class="result-value" id="resultNewA">—</span>
+      </div>
+      <div class="result-row">
+        <span class="result-label">池中 B 的新储备</span>
+        <span class="result-value" id="resultNewB">—</span>
+      </div>
+      <div class="result-row">
+        <span class="result-label">新的 k 值</span>
+        <span class="result-value" id="resultNewK">—</span>
+      </div>
+    </div>
+
+    <!-- AI Explanation -->
+    <div class="ai-section">
+      <div class="ai-header">
+        <span class="ai-icon">🤖</span>
+        <span class="ai-label">AI 解释</span>
+        <span class="ai-thinking" id="aiThinking" style="display:none;">思考中...</span>
+        <span class="annotation ai-gen">AI 生成</span>
+      </div>
+      <div class="ai-explanation" id="aiExplanation">
+        <span style="color:var(--text-muted);">点击「模拟交易 + AI 分析」按钮开始。</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Legend -->
+<div class="legend">
+  <div class="legend-item">
+    <span class="annotation ai-gen">AI GEN</span> AI 辅助生成
+  </div>
+  <div class="legend-item">
+    <span class="annotation human-verify">HUMAN ✓</span> 人工验证/修改
+  </div>
+</div>
+
+<!-- Footer -->
+<div class="footer">
+  <p>
+    <span class="annotation human-verify" style="margin-bottom:8px;display:inline-flex;">人工修改</span><br>
+    本 demo 中：<strong>HTML/CSS/JS 结构</strong>由 AI 辅助生成（Claude），<strong>AMM 计算逻辑</strong>由 AI 实现但经人工数学验证，
+    <strong>AI 解释文本</strong>为模板化生成（非实时 LLM 调用），<strong>配色与排版</strong>由 AI 建议、人工调整。<br>
+    核心公式 x·y=k 参考 Uniswap V2 白皮书。构建于 AI × Web3 School 学习项目。
+    <br><br>
+    <a href="https://github.com/gitgdut/ai-web3-school-cohort-0" target="_blank">ai-web3-school-cohort-0</a>
+  </p>
+</div>
+
+<script>
+  // ═══════════════════════════════════════════
+  // AMM SWAP SIMULATOR — JavaScript
+  // [AI 辅助实现] 计算逻辑，[人工验证] 数学正确性
+  // ═══════════════════════════════════════════
+
+  // ── State ──
+  let swapAtoB = true; // true = selling A for B, false = selling B for A
+
+  // ── DOM refs ──
+  const $ = (id) => document.getElementById(id);
+  const reserveAInput = $('reserveA');
+  const reserveBInput = $('reserveB');
+  const swapAmountInput = $('swapAmount');
+  const swapDir = $('swapDir');
+  const fromToken = $('fromToken');
+  const toToken = $('toToken');
+  const swapLabel = $('swapLabel');
+  const simulateBtn = $('simulateBtn');
+  const aiThinking = $('aiThinking');
+  const aiExplanation = $('aiExplanation');
+  const barA = $('barA');
+  const barB = $('barB');
+  const amountA = $('amountA');
+  const amountB = $('amountB');
+  const kValue = $('kValue');
+  const kNote = $('kNote');
+
+  // ── Format number ──
+  function fmt(n) {
+    if (Math.abs(n) >= 1e9) return (n / 1e9).toFixed(2) + 'B';
+    if (Math.abs(n) >= 1e6) return (n / 1e6).toFixed(2) + 'M';
+    if (Math.abs(n) >= 1e3) return (n / 1e3).toFixed(2) + 'K';
+    if (Number.isInteger(n)) return n.toLocaleString();
+    return n.toFixed(n < 0.01 ? 6 : 4);
+  }
+
+  // ── Update pool UI ──
+  function updatePoolUI() {
+    const rA = parseFloat(reserveAInput.value) || 0;
+    const rB = parseFloat(reserveBInput.value) || 0;
+    const max = Math.max(rA, rB);
+    const pctA = max > 0 ? (rA / max) * 100 : 0;
+    const pctB = max > 0 ? (rB / max) * 100 : 0;
+    barA.style.height = pctA + '%';
+    barB.style.height = pctB + '%';
+    amountA.textContent = fmt(rA);
+    amountB.textContent = fmt(rB);
+    const k = rA * rB;
+    kValue.textContent = fmt(k);
+    kNote.textContent = `x · y = ${fmt(rA)} × ${fmt(rB)}`;
+  }
+
+  // ── Toggle swap direction ──
+  function toggleDirection() {
+    swapAtoB = !swapAtoB;
+    swapDir.textContent = swapAtoB ? '→' : '←';
+    fromToken.textContent = swapAtoB ? 'A' : 'B';
+    toToken.textContent = swapAtoB ? 'B' : 'A';
+    fromToken.style.color = swapAtoB ? 'var(--accent)' : 'var(--purple)';
+    toToken.style.color = swapAtoB ? 'var(--purple)' : 'var(--accent)';
+    swapLabel.textContent = swapAtoB ? '输入 A 的数量' : '输入 B 的数量';
+  }
+
+  // ── Calculate swap ── [AI 辅助实现·人工验证]
+  //   基于 Uniswap V2 恒定乘积公式: (r1 + Δx * 0.997) * (r2 - Δy) = r1 * r2
+  //   其中 0.3% 手续费 => 实际增加量为 Δx * 0.997
+  function calculateSwap() {
+    const rA = parseFloat(reserveAInput.value);
+    const rB = parseFloat(reserveBInput.value);
+    const amountIn = parseFloat(swapAmountInput.value);
+    const fee = 0.997; // 0.3% fee
+
+    if (!rA || !rB || !amountIn || amountIn <= 0) return null;
+
+    let amountOut, priceImpact, newReserveIn, newReserveOut, spotPriceBefore, spotPriceAfter;
+
+    if (swapAtoB) {
+      // Selling A, receiving B
+      const amountInAfterFee = amountIn * fee;
+      newReserveIn = rA + amountIn;       // 池中 A 增加
+      amountOut = (rB * amountInAfterFee) / (rA + amountInAfterFee);
+      newReserveOut = rB - amountOut;      // 池中 B 减少
+      spotPriceBefore = rA / rB;           // Price of A in terms of B
+      spotPriceAfter = newReserveIn / newReserveOut;
+    } else {
+      // Selling B, receiving A
+      const amountInAfterFee = amountIn * fee;
+      newReserveIn = rB + amountIn;       // 池中 B 增加
+      amountOut = (rA * amountInAfterFee) / (rB + amountInAfterFee);
+      newReserveOut = rA - amountOut;      // 池中 A 减少
+      spotPriceBefore = rB / rA;
+      spotPriceAfter = newReserveIn / newReserveOut;
+    }
+
+    const executionPrice = amountIn / amountOut;
+    priceImpact = ((spotPriceAfter - spotPriceBefore) / spotPriceBefore) * 100;
+
+    return {
+      amountIn, amountOut, priceImpact,
+      newReserveIn, newReserveOut,
+      spotPriceBefore, spotPriceAfter,
+      executionPrice,
+      fee: amountIn * (1 - fee),
+      reserveA: swapAtoB ? newReserveIn : newReserveOut,
+      reserveB: swapAtoB ? newReserveOut : newReserveIn,
+    };
+  }
+
+  // ── Handle simulate click ──
+  function handleSimulate() {
+    const result = calculateSwap();
+    if (!result) {
+      aiExplanation.innerHTML = '<span style="color:var(--red);">⚠️ 请检查输入参数，确保所有值大于 0。</span>';
+      return;
+    }
+
+    // Update result values
+    $('resultPay').textContent = fmt(result.amountIn) + ' ' + (swapAtoB ? 'A' : 'B');
+    $('resultReceive').textContent = fmt(result.amountOut) + ' ' + (swapAtoB ? 'B' : 'A');
+
+    const priceStr = '1 ' + (swapAtoB ? 'A' : 'B') + ' = ' + fmt(1 / result.executionPrice) + ' ' + (swapAtoB ? 'B' : 'A');
+    $('resultPrice').textContent = priceStr;
+
+    const slipStr = result.priceImpact.toFixed(4) + '%';
+    const slipEl = $('resultSlippage');
+    slipEl.textContent = slipStr;
+    slipEl.className = 'result-value';
+    if (Math.abs(result.priceImpact) < 1) slipEl.classList.add('positive');
+    else if (Math.abs(result.priceImpact) < 5) slipEl.classList.add('warning');
+    else slipEl.classList.add('danger');
+
+    $('resultNewA').textContent = fmt(result.reserveA);
+    $('resultNewB').textContent = fmt(result.reserveB);
+    $('resultNewK').textContent = fmt(result.reserveA * result.reserveB);
+
+    // Update pool viz with new reserves
+    const max = Math.max(result.reserveA, result.reserveB);
+    barA.style.height = (result.reserveA / max * 100) + '%';
+    barB.style.height = (result.reserveB / max * 100) + '%';
+    amountA.textContent = fmt(result.reserveA);
+    amountB.textContent = fmt(result.reserveB);
+    kValue.textContent = fmt(result.reserveA * result.reserveB);
+    kNote.textContent = `x · y = ${fmt(result.reserveA)} × ${fmt(result.reserveB)}`;
+
+    // Generate AI explanation with typing effect
+    generateAIExplanation(result);
+  }
+
+  // ── AI Explanation Generator ── [AI 辅助实现·人工编辑]
+  //   注意：这里不是真正的 LLM API 调用，而是基于计算结果的模板化解释。
+  //   在生产环境中可以替换为 fetch() 到 OpenAI / 本地 LLM 的实时调用。
+  function generateAIExplanation(result) {
+    aiThinking.style.display = 'inline';
+    aiExplanation.innerHTML = '';
+
+    const fromSym = swapAtoB ? 'A' : 'B';
+    const toSym = swapAtoB ? 'B' : 'A';
+    const fromColor = swapAtoB ? 'var(--accent)' : 'var(--purple)';
+    const toColor = swapAtoB ? 'var(--purple)' : 'var(--accent)';
+
+    let impactLevel = '';
+    let impactAdvice = '';
+    if (Math.abs(result.priceImpact) < 0.5) {
+      impactLevel = '非常小';
+      impactAdvice = '这是一笔小额交易，对池中价格几乎没有影响。你的交易体验会很好。';
+    } else if (Math.abs(result.priceImpact) < 2) {
+      impactLevel = '适中';
+      impactAdvice = '价格有轻微偏移。如果你的交易金额较大，可以考虑拆分成多笔小额交易来降低价格影响。';
+    } else if (Math.abs(result.priceImpact) < 5) {
+      impactLevel = '较大';
+      impactAdvice = '⚠️ 价格影响已经比较明显了。建议降低交易金额，或者寻找流动性更深的池子来获得更好的价格。';
+    } else {
+      impactLevel = '非常大';
+      impactAdvice = '🔴 价格影响很大！大额交易会在浅池中造成严重的价格偏移。强烈建议减小金额或使用聚合器（如 1inch）拆分路由。';
+    }
+
+    const explanationHTML = `
+      <p>📝 <strong>交易分析</strong></p>
+      <p>你正在用 <span class="highlight">${fmt(result.amountIn)} ${fromSym}</span> 交换 <span class="highlight-purple">${fmt(result.amountOut)} ${toSym}</span>。</p>
+      <p>成交均价为 <strong>1 ${fromSym} = ${fmt(result.amountOut / result.amountIn)} ${toSym}</strong>。</p>
+      <p style="margin-top:8px;">📐 <strong>AMM 机制解释：</strong><br>
+      池子遵循 <span class="highlight">x · y = k</span> 规则。当你向池中存入 ${fromSym} 时，
+      池中 ${fromSym} 的储备增加，为了保持 k 不变，${toSym} 的储备必须减少——减少的量就是你收到的代币。</p>
+      <p>⚠️ 注意：实际计算中扣除了 <strong>0.3% 手续费</strong>（${fmt(result.fee)} ${fromSym}），
+      只有 ${fmt(result.amountIn * 0.997)} ${fromSym} 真正参与了交换。</p>
+      <p style="margin-top:8px;">📊 <strong>价格影响评估：${impactLevel}（${result.priceImpact.toFixed(4)}%）</strong><br>
+      ${impactAdvice}</p>
+      <p style="margin-top:8px;">💡 <strong>学习要点：</strong><br>
+      这就是为什么大资金交易者更倾向于使用 <strong>聚合器</strong>（如 1inch、Matcha）——它们会
+      自动将你的订单拆分到多个池子，从而最小化每个池子的价格影响，获得更好的综合价格。</p>
+    `;
+
+    // Typing effect — [AI 辅助实现]
+    typeText(aiExplanation, explanationHTML, 0);
+  }
+
+  // ── Typing effect ── [AI 辅助实现·人工调整速度]
+  function typeText(container, html, charIndex) {
+    aiThinking.style.display = 'inline';
+    if (charIndex === 0) container.innerHTML = '';
+
+    if (charIndex < html.length) {
+      // Process HTML tags in chunks
+      let chunk = '';
+      let i = charIndex;
+      const chunkSize = Math.floor(Math.random() * 3) + 2; // 2-4 chars per tick
+
+      while (i < html.length && (i - charIndex) < chunkSize) {
+        if (html[i] === '<') {
+          // Read entire tag
+          const tagEnd = html.indexOf('>', i);
+          if (tagEnd === -1) { i++; continue; }
+          chunk += html.substring(i, tagEnd + 1);
+          i = tagEnd + 1;
+        } else {
+          chunk += html[i];
+          i++;
+        }
+      }
+
+      container.innerHTML = html.substring(0, i) + '<span class="typing-cursor"></span>';
+      const delay = Math.random() * 20 + 8; // 8-28ms per chunk
+      setTimeout(() => typeText(container, html, i), delay);
+    } else {
+      container.innerHTML = html;
+      aiThinking.style.display = 'none';
+    }
+  }
+
+  // ── Event Listeners ──
+  reserveAInput.addEventListener('input', updatePoolUI);
+  reserveBInput.addEventListener('input', updatePoolUI);
+  swapDir.addEventListener('click', toggleDirection);
+  simulateBtn.addEventListener('click', handleSimulate);
+
+  // Quick amount buttons
+  $('quickAmounts').addEventListener('click', (e) => {
+    if (e.target.classList.contains('quick-btn')) {
+      document.querySelectorAll('.quick-btn').forEach(b => b.classList.remove('active'));
+      e.target.classList.add('active');
+      swapAmountInput.value = e.target.dataset.amount;
+    }
+  });
+
+  // Enter key triggers simulate
+  swapAmountInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') handleSimulate();
+  });
+
+  // ── Initialize ──
+  updatePoolUI();
+  toggleDirection(); // Set initial direction display
+</script>
+
+</body>
+</html>
